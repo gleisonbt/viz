@@ -23,6 +23,9 @@ import time
 import click
 import geocoder
 
+import requests
+from requests.auth import HTTPBasicAuth
+
 from githubstats.lib.github import GitHub
 from githubstats.repo import Repo
 from githubstats.user import User
@@ -141,6 +144,23 @@ class GitHubStats(object):
         self.CFG_USERS_PATH = self.build_module_path('data/2017/users')
         self.CFG_USERS_GEOCODES_PATH = self.build_module_path(
             'data/2017/users_geocodes')
+
+    def run_query(self, query):
+        URL = 'https://api.github.com/graphql'
+
+        headers = {"Authorization": "Bearer 487a6e4f9b787b37f184f4b98ab74f17fd9c2d29"}
+
+        request = requests.post(URL, json=query,headers=headers)
+
+        #print(self.github.user_pass)
+        #print(self.github.user_login)
+
+        #request = requests.post(URL, json=query,auth=HTTPBasicAuth("gleisonbt", "Aleister93"))
+
+        if request.status_code == 200:
+            return request.json()
+        else:
+            raise Exception("Query failed to run by returning code of {}. {}".format(request.status_code, query))
 
     def build_module_path(self, path):
         """Builds the path relative to where the module is loaded.
@@ -311,6 +331,72 @@ class GitHubStats(object):
         self.overall_devs.extend(devs)
         self.overall_orgs.extend(orgs)
 
+    def user_type(self, item_id):
+        queryType="""
+                    query type($queryUser:String!){
+                        search(query:$queryUser, type:USER, first:100){
+                            nodes{
+                                ... on Actor{
+                                __typename
+                            }
+                        }
+                    }
+                    }
+                    """
+        jsonType = {
+            "query": queryType, "variables":{
+            "queryUser": "user:" + item_id
+            }
+        }
+
+        result = self.run_query(jsonType)
+        
+        return result["data"]["search"]["nodes"][0]["__typename"]
+    
+    def user_data(self, item_id, ):
+
+        item_type = self.user_type(item_id)
+
+        prefixQueryUser = """
+            query findUser($user:String!){
+                user(login:$user){
+        """
+
+        prefixQueryOrganization = """
+            query findOrganization($user:String!){
+            organization(login:$user){
+        """
+
+        prefix = None
+        if item_type == "User":
+            prefix = prefixQueryUser
+        else:
+            prefix = prefixQueryOrganization
+
+        query =  prefix + """
+                    name
+                    location
+                }
+                }    
+        """
+
+        json = {
+            "query":query, "variables":{
+                "user":item_id
+            }
+        }
+
+        result = self.run_query(json)
+        
+        # print("result")
+        # print(result)
+
+        if item_type == "User":
+            return {"name":result["data"]["user"]["name"],"location":result["data"]["user"]["location"], "type":item_type}
+        else:
+            return {"name":result["data"]["organization"]["name"],"location":result["data"]["organization"]["location"], "type":item_type}
+
+
     def get_user_info(self, sorted_users):
         """Gets user info from the GitHubAPI.
 
@@ -325,26 +411,23 @@ class GitHubStats(object):
             First list: list of [:class:`githubstats.user.User`]
             Second list: list of [:class:`githubstats.repo.Repo`]
         """
+
         devs = []
         orgs = []
         self.print_rate_limit()
         for item in sorted_users:
+
             if item.id in self.cached_users:
                 user = self.cached_users[item.id]
             else:
-                user = self.github.api.user(item.id)
+                user_name = self.user_data(item.id)["name"]
+                user_location = self.user_data(item.id)["location"]
+                user_type = self.user_data(item.id)["type"]
+                user = User(item.id, user_name, user_type, user_location, item.stars)
             if user.type == 'User':
-                devs.append(User(item.id,
-                                 user.name,
-                                 user.type,
-                                 user.location,
-                                 item.stars))
+                devs.append(user)
             elif user.type == 'Organization':
-                orgs.append(User(item.id,
-                                 user.name,
-                                 user.type,
-                                 user.location,
-                                 item.stars))
+                orgs.append(user)
             self.print_rate_limit()
         return devs, orgs
 
@@ -515,7 +598,22 @@ class GitHubStats(object):
 
     def print_rate_limit(self):
         """Prints the rate limit."""
-        click.echo('Rate limit: ' + str(self.github.api.ratelimit_remaining))
+
+        query = """
+             query { 
+                 rateLimit{
+                     remaining
+                 }
+             }
+         """
+
+        json = {
+             "query":query, "variables":{}
+        }
+
+        result = self.run_query(json)["data"]["rateLimit"]["remaining"]
+
+        click.echo('Rate limit: ' + str(result))
 
     def search_repos(self, user_id_to_users_map, repos,
                      language, last_searched_repo=None):

@@ -615,6 +615,69 @@ class GitHubStats(object):
 
         click.echo('Rate limit: ' + str(result))
 
+
+    def search_repositories(self, query, sort='stars'):
+        queryRepos = """
+            query findRepos($query:String!){
+            search(query:$query, type:REPOSITORY, first:100{AFTER}){
+                pageInfo{
+                hasNextPage
+                endCursor
+                }
+                nodes{
+                ... on Repository{
+                    nameWithOwner
+                    stargazers{
+                    totalCount
+                    }
+                    forks{
+                    totalCount
+                    }
+                    description
+                    primaryLanguage{
+                    name
+                    }
+                }
+                }
+            }
+            rateLimit{
+                remaining
+                resetAt
+            }
+            }    
+        """
+
+        fistQuery = queryRepos.replace("{AFTER}", "")
+
+        json = {
+            "query":fistQuery, "variables":{
+                "query":query + " sort:" + sort
+            }
+        }
+
+        result = self.run_query(json)
+
+        nodes = result["data"]["search"]["nodes"]
+
+        next_page  = result["data"]["search"]["pageInfo"]["hasNextPage"]
+        while next_page:
+            cursor = result["data"]["search"]["pageInfo"]["endCursor"]
+            next_query = queryRepos.replace("{AFTER}", ", after: \"%s\"" % cursor)
+            json["query"] = next_query
+            result = self.run_query(json)
+            nodes.append(result["data"]["search"]["nodes"])
+            next_page  = result["data"]["search"]["pageInfo"]["hasNextPage"]
+        
+        repositories = []
+        for node in nodes:
+            repositories.append(Repo(node["nameWithOwner"], node["stargazers"]["totalCount"],
+                     node["forks"]["totalCount"], node["description"], node["primaryLanguage"]["language"]))
+
+
+        return repositories
+
+
+
     def search_repos(self, user_id_to_users_map, repos,
                      language, last_searched_repo=None):
         """Searches repos matching a query.
@@ -645,7 +708,8 @@ class GitHubStats(object):
                             '..' + str(stars_max))
         query = self.generate_search_query(
             language, stars_filter=stars_filter)
-        results = self.github.api.search_repositories(query, sort='stars')
+        #results = self.github.api.search_repositories(query, sort='stars')
+        results = self.search_repositories(query, sort='stars')
         count = 0
         find_resume_point = True if last_searched_repo is not None else False
         try:
@@ -661,12 +725,13 @@ class GitHubStats(object):
                 if language == 'Unknown':
                     if result.repository.language is not None:
                         continue
-                repo = Repo(result.repository.full_name,
-                            result.repository.stargazers_count,
-                            result.repository.forks_count,
-                            result.repository.description,
-                            result.repository.language)
-                repos.append(repo)
+                # repo = Repo(result.repository.full_name,
+                #             result.repository.stargazers_count,
+                #             result.repository.forks_count,
+                #             result.repository.description,
+                #             result.repository.language)
+                # repos.append(repo)
+                repos.append(result.repository)
                 user_id = result.repository.full_name.split('/')[0]
                 if user_id in user_id_to_users_map:
                     user_id_to_users_map[user_id].stars += \

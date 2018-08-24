@@ -148,7 +148,7 @@ class GitHubStats(object):
     def run_query(self, query):
         URL = 'https://api.github.com/graphql'
 
-        headers = {"Authorization": "Bearer 487a6e4f9b787b37f184f4b98ab74f17fd9c2d29"}
+        headers = {"Authorization": "Bearer abdd103184f1537d2208ddddb2fc26e12c453895"}
 
         request = requests.post(URL, json=query,headers=headers)
 
@@ -388,13 +388,14 @@ class GitHubStats(object):
 
         result = self.run_query(json)
         
-        # print("result")
-        # print(result)
+        #print(result)
 
         if item_type == "User":
-            return {"name":result["data"]["user"]["name"],"location":result["data"]["user"]["location"], "type":item_type}
+            return {"name":result["data"]["user"]["name"],
+            "location":result["data"]["user"]["location"], "type":item_type}
         else:
-            return {"name":result["data"]["organization"]["name"],"location":result["data"]["organization"]["location"], "type":item_type}
+            return {"name":result["data"]["organization"]["name"],
+            "location":result["data"]["organization"]["location"], "type":item_type}
 
 
     def get_user_info(self, sorted_users):
@@ -665,13 +666,13 @@ class GitHubStats(object):
             next_query = queryRepos.replace("{AFTER}", ", after: \"%s\"" % cursor)
             json["query"] = next_query
             result = self.run_query(json)
-            nodes.append(result["data"]["search"]["nodes"])
+            nodes += result["data"]["search"]["nodes"]
             next_page  = result["data"]["search"]["pageInfo"]["hasNextPage"]
         
         repositories = []
         for node in nodes:
             repositories.append(Repo(node["nameWithOwner"], node["stargazers"]["totalCount"],
-                     node["forks"]["totalCount"], node["description"], node["primaryLanguage"]["language"]))
+                     node["forks"]["totalCount"], node["description"], node["primaryLanguage"]["name"]))
 
 
         return repositories
@@ -716,14 +717,14 @@ class GitHubStats(object):
             for result in results:
                 count += 1
                 if find_resume_point and last_searched_repo.full_name != \
-                        result.repository.full_name:
+                        result.full_name:
                     continue
                 if find_resume_point and last_searched_repo.full_name == \
-                        result.repository.full_name:
+                        result.full_name:
                     find_resume_point = False
                     continue
                 if language == 'Unknown':
-                    if result.repository.language is not None:
+                    if result.language is not None:
                         continue
                 # repo = Repo(result.repository.full_name,
                 #             result.repository.stargazers_count,
@@ -731,22 +732,23 @@ class GitHubStats(object):
                 #             result.repository.description,
                 #             result.repository.language)
                 # repos.append(repo)
-                repos.append(result.repository)
-                user_id = result.repository.full_name.split('/')[0]
+                repos.append(result)
+                user_id = result.full_name.split('/')[0]
                 if user_id in user_id_to_users_map:
                     user_id_to_users_map[user_id].stars += \
-                        result.repository.stargazers_count
+                        result.stars
                 else:
                     user_id_to_users_map[user_id] = User(
                         user_id,
-                        stars=result.repository.stargazers_count)
+                        stars=result.stars)
                 if user_id in self.user_repos_map:
-                    self.user_repos_map[user_id].append(repo)
+                    self.user_repos_map[user_id].append(result)
                 else:
-                    self.user_repos_map[user_id] = [repo]
+                    self.user_repos_map[user_id] = [result]
         except AttributeError:
             # github3.py sometimes throws the following during iteration:
             # AttributeError: 'NoneType' object has no attribute 'get'
+            click.secho(result.stars)
             click.secho('count_stars caught AttributeError', fg='red')
         # The search_repositories call returns a maximum of 1000 elements
         return count == 1000

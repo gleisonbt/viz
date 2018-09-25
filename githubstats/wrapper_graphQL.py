@@ -8,7 +8,7 @@ from githubstats.user import User
 def run_query(self, query):
         URL = 'https://api.github.com/graphql'
 
-        headers = {"Authorization": "Bearer 727f4c8843e3e8c1ecf485dbe4429dfdca3fcffe"}
+        headers = {"Authorization": "Bearer 75a8c1ee0b594fbc8fc7958e44339387986299fb"}
 
         request = requests.post(URL, json=query,headers=headers)
 
@@ -41,13 +41,9 @@ def user_type(self, item_id):
             }
         }
 
-        result = self.run_query(jsonType)
-        
-        return result["data"]["search"]["nodes"][0]["__typename"]
+        return run_query(self,jsonType)
 
-def user_data(self, item_id, ):
-
-        item_type = self.user_type(item_id)
+def user_data(self, item_id, item_type):
 
         prefixQueryUser = """
             query findUser($user:String!){
@@ -78,16 +74,9 @@ def user_data(self, item_id, ):
             }
         }
 
-        result = self.run_query(json)
-        
-        #print(result)
+        return run_query(self,json)
 
-        if item_type == "User":
-            return {"name":result["data"]["user"]["name"],
-            "location":result["data"]["user"]["location"], "type":item_type}
-        else:
-            return {"name":result["data"]["organization"]["name"],
-            "location":result["data"]["organization"]["location"], "type":item_type}
+        
 
 def print_rate_limit(self):
         """Prints the rate limit."""
@@ -104,9 +93,7 @@ def print_rate_limit(self):
             "query":query, "variables":{}
         }
 
-        result = run_query(self,json)["data"]["rateLimit"]["remaining"]
-
-        click.echo('Rate limit: ' + str(result))
+        return run_query(self,json)["data"]["rateLimit"]["remaining"]
 
 def search_repositories(self, query, sort='stars'):
         queryRepos = """
@@ -147,7 +134,7 @@ def search_repositories(self, query, sort='stars'):
             }
         }
 
-        result = run_query(self,json)
+        result =  run_query(self,json)
 
         nodes = result["data"]["search"]["nodes"]
 
@@ -160,10 +147,6 @@ def search_repositories(self, query, sort='stars'):
             nodes += result["data"]["search"]["nodes"]
             next_page  = result["data"]["search"]["pageInfo"]["hasNextPage"]
         
-        repositories = []
-        for node in nodes:
-            repositories.append(Repo(node["nameWithOwner"], node["stargazers"]["totalCount"],
-                    node["forks"]["totalCount"], node["description"], node["primaryLanguage"]["name"]))
 
+        return nodes
 
-        return repositories

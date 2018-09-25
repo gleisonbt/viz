@@ -318,10 +318,19 @@ class GitHubStats(object):
         self.overall_orgs.extend(orgs)
 
     def user_type(self, item_id):
-        return user_type(self,item_id)
+        return user_type(self,item_id)["data"]["search"]["nodes"][0]["__typename"]
         
     def user_data(self, item_id, ):
-        return user_data(self,item_id)
+        item_type = self.user_type(item_id)
+
+        result =  user_data(self,item_id, item_type)
+
+        if item_type == "User":
+            return {"name":result["data"]["user"]["name"],
+            "location":result["data"]["user"]["location"], "type":item_type}
+        else:
+            return {"name":result["data"]["organization"]["name"],
+            "location":result["data"]["organization"]["location"], "type":item_type}
         
 
     def get_user_info(self, sorted_users):
@@ -526,11 +535,17 @@ class GitHubStats(object):
     def print_rate_limit(self):
         """Prints the rate limit."""
 
-        print_rate_limit(self)
+        click.echo('Rate limit: ' + str(print_rate_limit(self)))
 
 
     def search_repositories(self, query, sort='stars'):
-        return search_repositories(self, query, sort='stars')
+        repos =  search_repositories(self, query, sort='stars')
+
+        repositories = []
+        for repo in repos:
+            repositories.append(Repo(repo["nameWithOwner"], repo["stargazers"]["totalCount"],
+                    repo["forks"]["totalCount"], repo["description"], repo["primaryLanguage"]["name"]))
+        return repositories
 
 
 
